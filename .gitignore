@@ -1,0 +1,26 @@
+node_modules/
+out/
+dist/
+.vite/
+
+# Local worktrees (per global CLAUDE.md convention)
+worktrees/
+
+# Test output
+playwright-report/
+test-results/
+coverage/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Env
+.env
+.env.local
+.env.*.local
