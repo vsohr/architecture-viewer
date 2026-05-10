@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { parseArchitectureMarkdown } from './architectureParser';
 
 const validMarkdown = `# Traderank Architecture
@@ -178,5 +180,23 @@ edges:
         expect(result.model.levels['dotted.orchestrator'].edges).toEqual([
             { from: 'risk', to: 'executor', kind: 'calls' },
         ]);
+    });
+
+    test('parses the tracked Traderank example', async () => {
+        const markdown = await readFile(
+            join(process.cwd(), 'examples', 'traderank', 'ARCHITECTURE.md'),
+            'utf8',
+        );
+
+        const result = parseArchitectureMarkdown(markdown, 'ARCHITECTURE.md');
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) throw new Error(result.errors.map((e) => e.message).join('\n'));
+        expect(Object.keys(result.model.levels)).toEqual([
+            'traderank',
+            'traderank.signals',
+            'traderank.orchestrator',
+        ]);
+        expect(result.model.comments).toHaveLength(5);
     });
 });

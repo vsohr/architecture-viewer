@@ -272,6 +272,10 @@ export default function App() {
     }, []);
 
     const handleOpenFolder = useCallback(async () => {
+        if (!window.archViewer) {
+            flashToast('Electron bridge is not available');
+            return;
+        }
         const picked = await window.archViewer.openFolder();
         if (picked) {
             setRecentRepos(await loadRecentRepos());
@@ -284,6 +288,12 @@ export default function App() {
         void loadRecentRepos().then((repos) => {
             if (mounted) setRecentRepos(repos);
         });
+
+        if (!window.archViewer) {
+            return () => {
+                mounted = false;
+            };
+        }
 
         const offUpdate = window.archViewer.onModelUpdate((incoming) => {
             const next = incoming as ArchSystem;
@@ -531,6 +541,10 @@ export default function App() {
 
     const handlePalettePick = useCallback(
         async (r: RecentRepo) => {
+            if (!window.archViewer) {
+                flashToast('Electron bridge is not available');
+                return;
+            }
             setPaletteOpen(false);
             await window.archViewer.openRepo(r.path);
             setRecentRepos(await loadRecentRepos());
@@ -691,6 +705,7 @@ export default function App() {
 }
 
 async function loadRecentRepos(): Promise<RecentRepo[]> {
+    if (!window.archViewer) return [];
     const repos = await window.archViewer.getRecentRepos();
     return Array.isArray(repos) ? (repos as RecentRepo[]) : [];
 }

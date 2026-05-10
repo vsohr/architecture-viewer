@@ -18,6 +18,12 @@ npm install
 npm run dev          # Launch the Electron app in watch mode
 ```
 
+To see a populated diagram immediately, open this folder from the app:
+
+```text
+examples/traderank
+```
+
 ## ARCHITECTURE.md format
 
 Arch Viewer expects one `ARCHITECTURE.md` file at the opened folder root. The file should contain one fenced `arch` YAML block:
