@@ -82,8 +82,12 @@ function sendModelError(errors: ValidationError[]): void {
     mainWindow?.webContents.send('model:error', errors);
 }
 
+function getUserDataPath(): string {
+    return process.env.ARCH_VIEWER_USER_DATA_DIR || app.getPath('userData');
+}
+
 async function openRepository(folderPath: string): Promise<string> {
-    await recordRecentRepo(app.getPath('userData'), folderPath);
+    await recordRecentRepo(getUserDataPath(), folderPath);
     await architectureSession?.openFolder(folderPath);
     return folderPath;
 }
@@ -104,7 +108,7 @@ function registerIpcHandlers(): void {
     });
 
     ipcMain.handle('recent-repos:list', async () => {
-        return listRecentRepos(app.getPath('userData'));
+        return listRecentRepos(getUserDataPath());
     });
 }
 
