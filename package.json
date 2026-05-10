@@ -18,7 +18,7 @@
     "lint": "eslint .",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
     "@xyflow/react": "^12.4.0",

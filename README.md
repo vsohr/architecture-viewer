@@ -62,6 +62,7 @@ Supported edge kinds are `calls`, `reads`, `writes`, `publishes`, `subscribes`, 
 npm run typecheck    # tsc --noEmit on both node and web tsconfigs
 npm run lint
 npm run test:run
+npm run test:e2e    # Builds, launches Electron with Playwright, verifies preload + repo loading
 npm run build        # Compile main + preload + renderer to out/
 ```
 
