@@ -43,9 +43,22 @@ Electron, Vite-built React renderer.
 
 **Main process.** `chokidar` watches `ARCHITECTURE.md` and debounces on change. Resolves the file via an "Open Folder" picker. Parses YAML + extracts HTML comments. Validates with Zod schema. Emits `model:update` (valid) or `model:error` (invalid) over IPC. No persistent storage beyond a `recent-repos.json` in `app.getPath('userData')`.
 
-**Renderer.** React 19 + TypeScript 5 + Tailwind 4. React Flow 12 for canvas (custom node components per `kind`). ELK.js for hierarchical layout per level. js-yaml for parsing, Zod for validation. State management: Zustand (or plain React context — small surface).
+**Renderer.** React 19 + TypeScript 5 + Tailwind 4. The current renderer uses custom React/SVG canvas components ported from the design handoff rather than React Flow. Parsed levels arrive pre-shaped for the renderer, with stable node IDs, level bounds, node positions, edges, comments, and validation errors.
 
 **Panes.** Top: breadcrumb + zoom controls. Main: canvas. Right: detail panel (selected node's purpose, tech, anchored comments, "open in editor" link). Optional toggleable raw-markdown preview.
+
+## Current implementation notes
+
+The v0 backend now implements the main data path:
+
+- `src/main/architectureParser.ts` extracts the `arch` fence, parses YAML with `js-yaml`, validates with Zod, extracts HTML comments, and returns renderer-ready `ArchSystem` data.
+- `src/main/architectureRepository.ts` reads `ARCHITECTURE.md` from the selected folder and converts missing-file cases into structured validation errors.
+- `src/main/architectureSession.ts` owns the active repo, debounces watcher reloads, and emits model or error events.
+- `src/main/recentRepos.ts` persists `recent-repos.json` in Electron `userData`.
+- `src/main/index.ts` wires folder picking, recent repo opening, chokidar, and IPC.
+- `src/renderer/src/App.tsx` subscribes to `model:update` and `model:error` instead of reading the old Traderank fixture.
+
+The implementation deliberately does not mutate `ARCHITECTURE.md` yet. The starter-template CTA, copy helpers, and full diff animation remain future work.
 
 ## Drill-down behavior
 
@@ -70,8 +83,10 @@ Layout: ELK `layered` algorithm per level. Node sizes constant per kind. No manu
 2. Main reads → parses YAML fence + HTML comments → validates with Zod.
 3. On valid: emits `model:update` with the parsed AST.
 4. On invalid: emits `model:error` with structured messages (file, line, col, message).
-5. Renderer holds current model + current zoom-path. ELK lays out the visible level. React Flow renders.
-6. File change → main re-parses → diffs → `model:update`. Renderer animates transitions where IDs match across diffs.
+5. Renderer holds current model + current zoom-path and renders the visible level with the custom canvas components.
+6. File change → main re-parses → `model:update` or `model:error`. The renderer preserves the current drill level when the level still exists in the new model.
+
+Full structural diffing between consecutive parses is still planned; it is not implemented yet.
 
 ## Error handling
 
@@ -79,9 +94,9 @@ YAML parse errors → bottom error panel with line/col + link to open file in th
 
 Schema validation errors → same panel, structured messages ("node `orchestrator.router` references undeclared parent `orchestrator`"). Crucially, error text is shaped so an LLM reading it can self-correct on the next pass — this is what makes the format practically LLM-authorable without any LLM integration in the app.
 
-Missing `ARCHITECTURE.md` → empty state with "Create starter" CTA that writes a stub (with an inline prompt comment for the LLM).
+Missing `ARCHITECTURE.md` → structured error from the backend. The empty state still includes a "Create starter" CTA, but writing the starter file is not implemented yet.
 
-Edge referencing an unknown id → soft-error: render the rest, mark the bad edge in the panel.
+Edge referencing an unknown id → structured validation error in the panel.
 
 File watcher errors (permissions, deletion) → toast + retry on next interaction.
 
@@ -123,11 +138,13 @@ Electron 30+, electron-builder, electron-vite. React 19, TypeScript 5, Tailwind 
 
 ## Testing
 
-Fixtures: 10-15 `ARCHITECTURE.md` examples (valid + invalid) → snapshot tests on parser/validator output.
+Current coverage includes focused Vitest tests for parser/validator behavior, missing-file loading, recent repo persistence, and watcher/session debounce behavior.
+
+Planned fixture coverage: 10-15 `ARCHITECTURE.md` examples (valid + invalid) with snapshot tests on parser/validator output.
 
 Renderer: react-testing-library on detail panel and breadcrumb logic.
 
-Layout: ELK output is deterministic given fixed input → snapshot tests on layout coordinates for a couple of canonical fixtures.
+Layout: snapshot tests on deterministic renderer-level coordinates for a couple of canonical fixtures.
 
 E2E: Playwright opens Electron, picks a folder fixture, asserts canvas renders and drill-down navigates as expected.
 

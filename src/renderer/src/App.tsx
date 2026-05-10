@@ -6,9 +6,17 @@ import {
     useRef,
     useState,
 } from 'react';
-import type { ArchNode, KeyHint, Level, NodeRect, RecentRepo, Transform } from './types';
+import type {
+    ArchNode,
+    ArchSystem,
+    KeyHint,
+    Level,
+    NodeRect,
+    RecentRepo,
+    Transform,
+    ValidationError,
+} from './types';
 import { fitTransform, nodeFillsTransform } from './lib/geometry';
-import { RECENT_REPOS, TRADERANK } from './lib/fixture';
 import { Breadcrumb, HoverThumbnail, Stage } from './components/canvas';
 import {
     CommandPalette,
@@ -52,12 +60,15 @@ export default function App() {
     // CSS defaults provide spacious + violet; comments mode + transition
     // are wired below.
 
-    const [mode, setMode] = useState<Mode>('loaded');
+    const [mode, setMode] = useState<Mode>('empty');
+    const [model, setModel] = useState<ArchSystem | null>(null);
+    const [recentRepos, setRecentRepos] = useState<RecentRepo[]>([]);
+    const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [commentsOpen, setCommentsOpen] = useState(false);
     const [errorsOpen, setErrorsOpen] = useState(false);
 
-    const [pathIds, setPathIds] = useState<string[]>(['traderank']);
+    const [pathIds, setPathIds] = useState<string[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [hoverId, setHoverId] = useState<string | null>(null);
     const [hoverAnchor, setHoverAnchor] = useState<{
@@ -90,7 +101,8 @@ export default function App() {
 
     const applyOverrides = useCallback(
         (levelId: string): Level | null => {
-            const lvl = TRADERANK.levels[levelId];
+            if (!model) return null;
+            const lvl = model.levels[levelId];
             if (!lvl) return null;
             const prefix = levelId + '::';
             const has = Object.keys(nodeOverrides).some((k) => k.startsWith(prefix));
@@ -103,7 +115,7 @@ export default function App() {
                 }),
             };
         },
-        [nodeOverrides],
+        [model, nodeOverrides],
     );
 
     const [panByLevel, setPanByLevel] = useState<Record<string, { x: number; y: number }>>({});
@@ -170,8 +182,8 @@ export default function App() {
     );
 
     const levelComments = useMemo(
-        () => TRADERANK.comments.filter((c) => c.levelId === currentLevelId),
-        [currentLevelId],
+        () => (model ? model.comments.filter((c) => c.levelId === currentLevelId) : []),
+        [currentLevelId, model],
     );
 
     const selectedNode =
@@ -184,7 +196,7 @@ export default function App() {
             if (!node || !node.hasChildren) return;
             const newPath = [...pathIds, node.id];
             const newId = newPath.join('.');
-            if (!TRADERANK.levels[newId]) return;
+            if (!model?.levels[newId]) return;
             setTransition({
                 phase: 'in',
                 from: currentLevelId,
@@ -200,7 +212,7 @@ export default function App() {
                 setTransition(null);
             }, TRANSITION_MS);
         },
-        [pathIds, currentLevelId],
+        [pathIds, currentLevelId, model],
     );
 
     const drillOut = useCallback(() => {
@@ -208,7 +220,7 @@ export default function App() {
         const newPath = pathIds.slice(0, -1);
         const newId = newPath.join('.');
         const exitingNodeId = pathIds[pathIds.length - 1];
-        const parentLevel = TRADERANK.levels[newId];
+        const parentLevel = model?.levels[newId];
         const exitingNode = parentLevel
             ? parentLevel.nodes.find((n) => n.id === exitingNodeId)
             : null;
@@ -226,7 +238,7 @@ export default function App() {
             setSelectedId(exitingNodeId);
             setTransition(null);
         }, TRANSITION_MS);
-    }, [pathIds, currentLevelId]);
+    }, [pathIds, currentLevelId, model]);
 
     const jumpTo = useCallback(
         (depth: number) => {
@@ -262,10 +274,41 @@ export default function App() {
     const handleOpenFolder = useCallback(async () => {
         const picked = await window.archViewer.openFolder();
         if (picked) {
-            setMode('loaded');
+            setRecentRepos(await loadRecentRepos());
             flashToast(`Opened ${picked}`);
         }
     }, [flashToast]);
+
+    useEffect(() => {
+        let mounted = true;
+        void loadRecentRepos().then((repos) => {
+            if (mounted) setRecentRepos(repos);
+        });
+
+        const offUpdate = window.archViewer.onModelUpdate((incoming) => {
+            const next = incoming as ArchSystem;
+            setModel(next);
+            setPathIds((prev) => (next.levels[prev.join('.')] ? prev : [next.id]));
+            setSelectedId(null);
+            setHoverId(null);
+            setHoverAnchor(null);
+            setValidationErrors([]);
+            setErrorsOpen(false);
+            setMode('loaded');
+        });
+
+        const offError = window.archViewer.onModelError((incoming) => {
+            const errors = Array.isArray(incoming) ? (incoming as ValidationError[]) : [];
+            setValidationErrors(errors);
+            setErrorsOpen(errors.length > 0);
+        });
+
+        return () => {
+            mounted = false;
+            offUpdate();
+            offError();
+        };
+    }, []);
 
     useEffect(() => {
         function handler(e: KeyboardEvent) {
@@ -487,9 +530,10 @@ export default function App() {
     }, [mode, selectedId, selectedNode, pathIds, paletteOpen, commentsOpen]);
 
     const handlePalettePick = useCallback(
-        (r: RecentRepo) => {
+        async (r: RecentRepo) => {
             setPaletteOpen(false);
-            setMode('loaded');
+            await window.archViewer.openRepo(r.path);
+            setRecentRepos(await loadRecentRepos());
             flashToast(`Opened ${r.name}`);
         },
         [flashToast],
@@ -508,14 +552,14 @@ export default function App() {
                 onOpenPalette={() => setPaletteOpen(true)}
                 onToggleComments={() => setCommentsOpen((o) => !o)}
                 onToggleErrors={() => setErrorsOpen((o) => !o)}
-                hasErrors={errorsOpen}
+                hasErrors={validationErrors.length > 0}
                 hasComments={levelComments.length > 0}
             />
 
-            {mode === 'loaded' && currentLevel && (
+            {mode === 'loaded' && currentLevel && model && (
                 <Breadcrumb
                     pathIds={pathIds}
-                    system={TRADERANK}
+                    system={model}
                     onJump={jumpTo}
                     onBack={drillOut}
                 />
@@ -531,10 +575,7 @@ export default function App() {
                 {mode === 'empty' && (
                     <EmptyState
                         onOpenFolder={handleOpenFolder}
-                        onCreateStarter={() => {
-                            setMode('loaded');
-                            flashToast('Wrote ARCHITECTURE.md (starter)');
-                        }}
+                        onCreateStarter={() => flashToast('Starter template is not wired yet')}
                         onShowRecent={() => setPaletteOpen(true)}
                     />
                 )}
@@ -594,10 +635,10 @@ export default function App() {
                         const n = currentLevel.nodes.find((x) => x.id === hoverId);
                         if (!n || !n.hasChildren) return null;
                         const childKey = currentLevelId + '.' + n.id;
-                        if (!TRADERANK.levels[childKey]) return null;
+                        if (!model?.levels[childKey]) return null;
                         return (
                             <HoverThumbnail
-                                levels={TRADERANK.levels}
+                                levels={model.levels}
                                 parentId={childKey}
                                 anchorRect={hoverAnchor}
                             />
@@ -628,7 +669,7 @@ export default function App() {
                 )}
 
                 <ValidationPanel
-                    errors={errorsOpen ? TRADERANK.sampleErrors : null}
+                    errors={errorsOpen ? validationErrors : null}
                     onDismiss={() => setErrorsOpen(false)}
                     onCopy={() => flashToast('Validation summary copied')}
                 />
@@ -643,8 +684,13 @@ export default function App() {
                 onClose={() => setPaletteOpen(false)}
                 onPick={handlePalettePick}
                 onBrowse={handleOpenFolder}
-                recents={RECENT_REPOS}
+                recents={recentRepos}
             />
         </div>
     );
+}
+
+async function loadRecentRepos(): Promise<RecentRepo[]> {
+    const repos = await window.archViewer.getRecentRepos();
+    return Array.isArray(repos) ? (repos as RecentRepo[]) : [];
 }

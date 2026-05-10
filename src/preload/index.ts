@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 const api = {
     openFolder: (): Promise<string | null> => ipcRenderer.invoke('folder:open'),
+    openRepo: (folderPath: string): Promise<string> => ipcRenderer.invoke('repo:open', folderPath),
+    getRecentRepos: (): Promise<unknown> => ipcRenderer.invoke('recent-repos:list'),
 
     onModelUpdate: (cb: (model: unknown) => void): (() => void) => {
         const listener = (_event: unknown, model: unknown): void => cb(model);

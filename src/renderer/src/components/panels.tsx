@@ -245,9 +245,7 @@ export function ValidationPanel({ errors, onDismiss, onCopy }: ValidationPanelPr
                 {errors.map((e, i) => (
                     <li key={i} className="vp-item">
                         <span className="vp-loc">
-                            <code>
-                                {e.file}:{e.line}:{e.col}
-                            </code>
+                            <code>{formatValidationLocation(e)}</code>
                         </span>
                         <span className="vp-msg">{e.message}</span>
                         {e.hint && <span className="vp-hint">{e.hint}</span>}
@@ -256,6 +254,12 @@ export function ValidationPanel({ errors, onDismiss, onCopy }: ValidationPanelPr
             </ul>
         </div>
     );
+}
+
+function formatValidationLocation(error: ValidationError): string {
+    if (error.line && error.col) return `${error.file}:${error.line}:${error.col}`;
+    if (error.line) return `${error.file}:${error.line}`;
+    return error.file;
 }
 
 // First-run / no-file empty state. Inviting, not error-y.

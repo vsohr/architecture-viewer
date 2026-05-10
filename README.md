@@ -18,6 +18,38 @@ npm install
 npm run dev          # Launch the Electron app in watch mode
 ```
 
+## ARCHITECTURE.md format
+
+Arch Viewer expects one `ARCHITECTURE.md` file at the opened folder root. The file should contain one fenced `arch` YAML block:
+
+````markdown
+```arch
+system: traderank
+nodes:
+  - id: ingest
+    kind: service
+    purpose: Normalizes upstream market data.
+    tech: Rust
+  - id: orchestrator
+    kind: service
+    purpose: Sizes positions and dispatches orders.
+    children:
+      - id: risk
+        kind: service
+        purpose: Applies exposure and drawdown limits.
+edges:
+  - from: ingest
+    to: orchestrator
+    kind: calls
+```
+
+<!-- @comment author:vadim target:orchestrator date:2026-05-10 -->
+<!-- Owns the decision loop and risk handoff. -->
+````
+
+Supported node kinds are `service`, `ui`, `datastore`, `queue`, `library`, and `external`.
+Supported edge kinds are `calls`, `reads`, `writes`, `publishes`, `subscribes`, `depends_on`, and `owns`.
+
 ## Quality
 
 ```bash
@@ -29,4 +61,4 @@ npm run build        # Compile main + preload + renderer to out/
 
 ## Status
 
-v0 — scaffolded. Parser, validator, and renderer come next. See [PROGRESS.md](PROGRESS.md).
+v0 foundation in progress. Renderer and backend data plumbing are in place: opening a folder reads and watches `ARCHITECTURE.md`, validates the DSL, persists recent repos, and pushes parsed models or structured errors to the renderer. Remaining work is tracked in [PROGRESS.md](PROGRESS.md).
