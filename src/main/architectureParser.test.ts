@@ -199,4 +199,14 @@ edges:
         ]);
         expect(result.model.comments).toHaveLength(5);
     });
+
+    test('parses the repository architecture document', async () => {
+        const markdown = await readFile(join(process.cwd(), 'ARCHITECTURE.md'), 'utf8');
+
+        const result = parseArchitectureMarkdown(markdown, 'ARCHITECTURE.md');
+
+        if (!result.ok) throw new Error(result.errors.map((e) => e.message).join('\n'));
+        expect(result.ok).toBe(true);
+        expect(result.model.id).toBe('arch-viewer');
+    });
 });
