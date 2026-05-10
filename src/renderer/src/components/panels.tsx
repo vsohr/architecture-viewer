@@ -18,6 +18,7 @@ export interface DetailPanelProps {
     onOpenComments: () => void;
     onDrillIn: (n: ArchNode) => void;
     onCopyContext: () => void;
+    onOpenInEditor: () => void;
 }
 
 export function DetailPanel({
@@ -27,6 +28,7 @@ export function DetailPanel({
     onOpenComments,
     onDrillIn,
     onCopyContext,
+    onOpenInEditor,
 }: DetailPanelProps) {
     const { kind, name, purpose, tech, hasChildren } = node;
     const cn = comments.filter((c) => c.nodeId === node.id);
@@ -53,7 +55,9 @@ export function DetailPanel({
                 <button className="dp-btn" onClick={onCopyContext}>
                     Copy context pack <span className="kbd-inline">⌘⇧C</span>
                 </button>
-                <button className="dp-btn ghost">Open in editor</button>
+                <button className="dp-btn ghost" onClick={onOpenInEditor}>
+                    Open in editor
+                </button>
             </div>
 
             <div className="dp-section">

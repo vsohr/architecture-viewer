@@ -157,6 +157,7 @@ export function NodeCard({
                     onDrillIn(node);
                 }
             }}
+            onClick={(e) => e.stopPropagation()}
             onMouseEnter={() => onHover && onHover(node)}
             onMouseLeave={() => onUnhover && onUnhover(node)}
         >

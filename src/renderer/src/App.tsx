@@ -305,6 +305,9 @@ export default function App() {
             setValidationErrors([]);
             setErrorsOpen(false);
             setMode('loaded');
+            void loadRecentRepos().then((repos) => {
+                if (mounted) setRecentRepos(repos);
+            });
         });
 
         const offError = window.archViewer.onModelError((incoming) => {
@@ -322,6 +325,24 @@ export default function App() {
 
     useEffect(() => {
         function handler(e: KeyboardEvent) {
+            if (e.key === 'Escape') {
+                if (paletteOpen) {
+                    setPaletteOpen(false);
+                    return;
+                }
+                if (commentsOpen) {
+                    setCommentsOpen(false);
+                    return;
+                }
+                if (selectedId) {
+                    setSelectedId(null);
+                    return;
+                }
+                if (pathIds.length > 1) {
+                    drillOut();
+                    return;
+                }
+            }
             const t = e.target as HTMLElement | null;
             if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
             if (e.metaKey || e.ctrlKey) {
@@ -338,24 +359,6 @@ export default function App() {
                 if (e.shiftKey && e.key.toLowerCase() === 'c') {
                     e.preventDefault();
                     flashToast('Context pack copied to clipboard');
-                    return;
-                }
-            }
-            if (e.key === 'Escape') {
-                if (paletteOpen) {
-                    setPaletteOpen(false);
-                    return;
-                }
-                if (commentsOpen) {
-                    setCommentsOpen(false);
-                    return;
-                }
-                if (selectedId) {
-                    setSelectedId(null);
-                    return;
-                }
-                if (pathIds.length > 1) {
-                    drillOut();
                     return;
                 }
             }
@@ -667,6 +670,7 @@ export default function App() {
                         onOpenComments={() => setCommentsOpen(true)}
                         onDrillIn={drillIn}
                         onCopyContext={() => flashToast('Context pack copied')}
+                        onOpenInEditor={() => flashToast('Open in editor is not wired yet')}
                     />
                 )}
 
