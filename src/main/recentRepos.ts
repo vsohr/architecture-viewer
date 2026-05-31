@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, join, normalize } from 'node:path';
+import { join } from 'node:path';
 
 export interface RecentRepo {
     name: string;
@@ -9,6 +9,19 @@ export interface RecentRepo {
 
 const RECENT_REPOS_FILE = 'recent-repos.json';
 const MAX_RECENTS = 12;
+
+// Repo paths may originate from either OS (e.g. a Windows path persisted then
+// read on a Linux CI runner), so derive the display name and the de-dup key in
+// a separator-agnostic way rather than relying on the platform-specific
+// node:path implementation, which only splits on the host separator.
+function repoDisplayName(repoPath: string): string {
+    const segments = repoPath.split(/[\\/]+/).filter(Boolean);
+    return segments[segments.length - 1] ?? repoPath;
+}
+
+function pathKey(repoPath: string): string {
+    return repoPath.replace(/[\\/]+/g, '/').replace(/\/+$/, '');
+}
 
 export async function listRecentRepos(userDataPath: string): Promise<RecentRepo[]> {
     try {
@@ -25,15 +38,15 @@ export async function recordRecentRepo(
     userDataPath: string,
     repoPath: string,
 ): Promise<RecentRepo[]> {
-    const normalizedPath = normalize(repoPath);
+    const key = pathKey(repoPath);
     const existing = await listRecentRepos(userDataPath);
     const next = [
         {
-            name: basename(normalizedPath),
-            path: normalizedPath,
+            name: repoDisplayName(repoPath),
+            path: repoPath,
             when: 'now',
         },
-        ...existing.filter((repo) => normalize(repo.path) !== normalizedPath),
+        ...existing.filter((repo) => pathKey(repo.path) !== key),
     ].slice(0, MAX_RECENTS);
 
     await mkdir(userDataPath, { recursive: true });
