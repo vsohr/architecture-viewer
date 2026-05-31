@@ -1,4 +1,4 @@
-# lint/typecheck/e2e are informational (continue-on-error) until each baseline is clean; flip to blocking per-gate once green. Unit tests are blocking.
+# All gates (lint, typecheck, unit tests, e2e) are green in CI and blocking.
 name: CI
 on:
   push:
@@ -11,8 +11,6 @@ jobs:
   # one job per gate (matrix) so lint / typecheck / unit tests run in PARALLEL
   check:
     runs-on: ubuntu-latest
-    # All gates informational: the vitest/Electron suites need a display/Electron runtime a vanilla runner lacks. Flip to blocking once green in CI.
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -28,7 +26,6 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
