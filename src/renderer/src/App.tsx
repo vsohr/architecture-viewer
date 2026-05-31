@@ -69,6 +69,12 @@ export default function App() {
     const [errorsOpen, setErrorsOpen] = useState(false);
 
     const [pathIds, setPathIds] = useState<string[]>([]);
+    // The drill path can change via a deferred (post-transition) setState, so a
+    // memoized child (e.g. the detail panel) may still hold a drill callback
+    // closed over a stale `pathIds`. Mirror it into a ref that drill handlers
+    // read at call time to always build the path from the live drill depth.
+    const pathIdsRef = useRef<string[]>(pathIds);
+    pathIdsRef.current = pathIds;
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [hoverId, setHoverId] = useState<string | null>(null);
     const [hoverAnchor, setHoverAnchor] = useState<{
@@ -194,12 +200,13 @@ export default function App() {
     const drillIn = useCallback(
         (node: ArchNode | null | undefined) => {
             if (!node || !node.hasChildren) return;
-            const newPath = [...pathIds, node.id];
+            const currentPath = pathIdsRef.current;
+            const newPath = [...currentPath, node.id];
             const newId = newPath.join('.');
             if (!model?.levels[newId]) return;
             setTransition({
                 phase: 'in',
-                from: currentLevelId,
+                from: currentPath.join('.'),
                 to: newId,
                 clickedNode: node,
                 ts: Date.now(),
@@ -212,14 +219,15 @@ export default function App() {
                 setTransition(null);
             }, TRANSITION_MS);
         },
-        [pathIds, currentLevelId, model],
+        [model],
     );
 
     const drillOut = useCallback(() => {
-        if (pathIds.length <= 1) return;
-        const newPath = pathIds.slice(0, -1);
+        const currentPath = pathIdsRef.current;
+        if (currentPath.length <= 1) return;
+        const newPath = currentPath.slice(0, -1);
         const newId = newPath.join('.');
-        const exitingNodeId = pathIds[pathIds.length - 1];
+        const exitingNodeId = currentPath[currentPath.length - 1];
         const parentLevel = model?.levels[newId];
         const exitingNode = parentLevel
             ? parentLevel.nodes.find((n) => n.id === exitingNodeId)
@@ -227,7 +235,7 @@ export default function App() {
         if (!exitingNode) return;
         setTransition({
             phase: 'out',
-            from: currentLevelId,
+            from: currentPath.join('.'),
             to: newId,
             clickedNode: exitingNode,
             ts: Date.now(),
@@ -238,7 +246,7 @@ export default function App() {
             setSelectedId(exitingNodeId);
             setTransition(null);
         }, TRANSITION_MS);
-    }, [pathIds, currentLevelId, model]);
+    }, [model]);
 
     const jumpTo = useCallback(
         (depth: number) => {

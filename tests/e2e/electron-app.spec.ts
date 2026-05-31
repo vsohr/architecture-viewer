@@ -153,9 +153,8 @@ test.describe('Electron app navigation and UI paths', () => {
         await expect(page.locator('.arch-node[data-id="renderer"]')).toBeVisible();
 
         await page.locator('.arch-node[data-id="renderer"]').click();
-        // Scope to the detail panel: a "Drill in" control also exists on each
-        // drillable node card (aria-label="Drill in"), so an unscoped role query
-        // matches 2 elements and triggers a strict-mode violation.
+        // Drill in from the detail panel's primary action (scoped to the panel
+        // to keep the target unambiguous as the UI grows).
         await page.locator('.detail-panel').getByRole('button', { name: 'Drill in' }).click();
         await expect(page.locator('.arch-node[data-id="app"]')).toBeVisible();
     });
