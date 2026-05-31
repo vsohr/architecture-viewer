@@ -12,6 +12,9 @@ test-results/
 coverage/
 .playwright-mcp/
 
+# Incremental TypeScript build cache
+*.tsbuildinfo
+
 # Editor / OS
 .DS_Store
 Thumbs.db

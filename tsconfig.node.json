@@ -12,6 +12,9 @@
         "resolveJsonModule": true,
         "isolatedModules": true,
         "noEmit": true,
+        "composite": true,
+        "incremental": true,
+        "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo/node.tsbuildinfo",
         "types": ["node"]
     },
     "include": [

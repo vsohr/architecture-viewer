@@ -1,0 +1,47 @@
+# lint/typecheck/e2e are informational (continue-on-error) until each baseline is clean; flip to blocking per-gate once green. Unit tests are blocking.
+name: CI
+on:
+  push:
+    branches: [main, master]
+  pull_request: {}
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+jobs:
+  # one job per gate (matrix) so lint / typecheck / unit tests run in PARALLEL
+  check:
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.gate != 'test:run' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [lint, typecheck, test:run]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run ${{ matrix.gate }}
+
+  e2e:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: "pw-${{ hashFiles('package-lock.json') }}"
+      - run: npx playwright install --with-deps chromium
+      # test:e2e builds the app then launches the packaged Electron binary via
+      # _electron.launch(), which needs a display (xvfb) on Linux. The tests share
+      # process.cwd()/userData and are NOT state-isolated under parallelism, so pin
+      # to a single worker rather than enabling fullyParallel.
+      - run: xvfb-run -a npm run test:e2e -- --workers=1
