@@ -1,6 +1,4 @@
 # lint, typecheck, and unit tests (the `check` matrix) are green and BLOCKING.
-# e2e is informational (continue-on-error) until the one remaining
-# 'detail-panel drill' failure is fixed; everything else in the e2e suite passes.
 name: CI
 on:
   push:
@@ -25,31 +23,3 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run ${{ matrix.gate }}
-
-  e2e:
-    runs-on: ubuntu-latest
-    # Informational: 11/12 e2e specs pass under xvfb, but the
-    # 'detail-panel drill' test (electron-app.spec.ts:145) still fails — after
-    # backing out of a level the detail-panel "Drill in" no-ops, so
-    # .arch-node[data-id="app"] never appears. This is a real renderer
-    # drill-state bug (NOT an environment limitation: xvfb + the build run
-    # fine), and reproducing it needs a headless display to iterate. Flip back
-    # to blocking once the drill regression is fixed.
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: "pw-${{ hashFiles('package-lock.json') }}"
-      - run: npx playwright install --with-deps chromium
-      # test:e2e builds the app then launches the packaged Electron binary via
-      # _electron.launch(), which needs a display (xvfb) on Linux. The tests share
-      # process.cwd()/userData and are NOT state-isolated under parallelism, so pin
-      # to a single worker rather than enabling fullyParallel.
-      - run: xvfb-run -a npm run test:e2e -- --workers=1
