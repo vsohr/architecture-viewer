@@ -8,6 +8,83 @@ type Bridge = {
     getRecentRepos: () => Promise<Array<{ path: string }>>;
 };
 
+const navigationArchitecture = `# Arch Viewer Test Architecture
+
+Stable fixture used by E2E interaction tests.
+
+\`\`\`arch
+system: arch-viewer
+name: Arch Viewer
+nodes:
+  - id: electron-platform
+    kind: external
+    name: Electron platform
+    purpose: Provides native app services.
+    tech: Electron 33
+  - id: main
+    kind: service
+    name: Main process
+    purpose: Owns repository loading and IPC.
+    tech: TypeScript, Electron main
+    primary: true
+    children:
+      - id: window
+        kind: service
+        name: Window host
+        purpose: Creates and manages the BrowserWindow.
+        tech: Electron BrowserWindow
+      - id: ipc
+        kind: service
+        name: IPC router
+        purpose: Routes renderer requests to main-process services.
+        tech: ipcMain
+  - id: preload
+    kind: service
+    name: Preload bridge
+    purpose: Exposes the safe renderer bridge.
+    tech: Electron contextBridge
+  - id: renderer
+    kind: ui
+    name: Renderer UI
+    purpose: Renders the architecture reading experience.
+    tech: React 19, Vite
+    children:
+      - id: app
+        kind: service
+        name: App orchestrator
+        purpose: Holds loaded model state and interaction state.
+        tech: React hooks
+      - id: canvas
+        kind: ui
+        name: Canvas stage
+        purpose: Draws nodes, edges, hover thumbnails, and breadcrumbs.
+        tech: React, SVG
+  - id: architecture-file
+    kind: datastore
+    name: Repository ARCHITECTURE.md
+    purpose: Source-of-truth architecture document.
+edges:
+  - from: main
+    to: electron-platform
+    kind: calls
+  - from: renderer
+    to: preload
+    kind: calls
+  - from: preload
+    to: main
+    kind: calls
+  - from: main.window
+    to: main.ipc
+    kind: calls
+  - from: renderer.app
+    to: renderer.canvas
+    kind: calls
+\`\`\`
+
+<!-- @comment author:codex target:preload date:2026-05-10 -->
+<!-- The preload bridge is intentionally narrow. -->
+`;
+
 async function launchApp(userDataPath?: string): Promise<{ app: ElectronApplication; page: Page }> {
     const app = await electron.launch({
         args: [join(process.cwd(), 'out', 'main', 'index.js')],
@@ -58,6 +135,14 @@ async function createArchitectureRepo(markdown: string): Promise<string> {
     const repoPath = await mkdtemp(join(tmpdir(), 'arch-viewer-repo-'));
     await writeFile(join(repoPath, 'ARCHITECTURE.md'), markdown, 'utf8');
     return repoPath;
+}
+
+async function createNavigationRepo(): Promise<string> {
+    return createArchitectureRepo(navigationArchitecture);
+}
+
+function currentNode(page: Page, nodeId: string) {
+    return page.locator(`.stage.layer-current .arch-node[data-id="${nodeId}"]`);
 }
 
 test.describe('Electron app navigation and UI paths', () => {
@@ -126,57 +211,84 @@ test.describe('Electron app navigation and UI paths', () => {
     });
 
     test('opens node details, runs detail buttons, and closes with escape', async () => {
-        await openRepository(page);
+        const repoPath = await createNavigationRepo();
 
-        await page.locator('.arch-node[data-id="main"]').click();
-        await expect(page.locator('.detail-panel')).toBeVisible();
-        await expect(page.locator('.detail-panel .dp-name')).toHaveText('Main process');
+        try {
+            await openRepository(page, repoPath);
 
-        await page.getByRole('button', { name: 'Copy context pack' }).click();
-        await expect(page.locator('.toast')).toContainText('Context pack copied');
+            await currentNode(page, 'main').click();
+            await expect(page.locator('.detail-panel')).toBeVisible();
+            await expect(page.locator('.detail-panel .dp-name')).toHaveText('Main process');
 
-        await page.getByRole('button', { name: 'Open in editor' }).click();
-        await expect(page.locator('.toast')).toContainText('Open in editor is not wired yet');
+            await page.getByRole('button', { name: 'Copy context pack' }).click();
+            await expect(page.locator('.toast')).toContainText('Context pack copied');
 
-        await page.keyboard.press('Escape');
-        await expect(page.locator('.detail-panel')).toHaveCount(0);
+            await page.getByRole('button', { name: 'Open in editor' }).click();
+            await expect(page.locator('.toast')).toContainText('Open in editor is not wired yet');
+
+            await page.keyboard.press('Escape');
+            await expect(page.locator('.detail-panel')).toHaveCount(0);
+        } finally {
+            await rm(repoPath, { recursive: true, force: true });
+        }
     });
 
     test('drills in from node controls, breadcrumbs back out, and supports detail-panel drill', async () => {
-        await openRepository(page);
+        const repoPath = await createNavigationRepo();
 
-        await page.locator('.arch-node[data-id="main"] .node-drill').click();
-        await expect(page.locator('.arch-node[data-id="window"]')).toBeVisible();
-        await expect(page.locator('.breadcrumb').getByText('main')).toBeVisible();
+        try {
+            await openRepository(page, repoPath);
 
-        await page.getByRole('button', { name: 'back' }).click();
-        await expect(page.locator('.arch-node[data-id="renderer"]')).toBeVisible();
+            await currentNode(page, 'main').locator('.node-drill').click();
+            await expect(currentNode(page, 'window')).toBeVisible();
+            await expect(page.locator('.breadcrumb').getByText('main')).toBeVisible();
 
-        await page.locator('.arch-node[data-id="renderer"]').click();
-        await page.getByRole('button', { name: 'Drill in' }).click();
-        await expect(page.locator('.arch-node[data-id="app"]')).toBeVisible();
+            await page.getByRole('button', { name: 'back' }).click();
+            await expect(currentNode(page, 'renderer')).toBeVisible();
+
+            await page.keyboard.press('Escape');
+            await expect(page.locator('.detail-panel')).toHaveCount(0);
+            await currentNode(page, 'renderer').click();
+            await expect(page.locator('.detail-panel .dp-name')).toHaveText('Renderer UI');
+            await page.locator('.detail-panel').getByRole('button', { name: 'Drill in' }).click();
+            await expect(currentNode(page, 'app')).toBeVisible();
+        } finally {
+            await rm(repoPath, { recursive: true, force: true });
+        }
     });
 
     test('shows hover thumbnails for drillable nodes', async () => {
-        await openRepository(page);
+        const repoPath = await createNavigationRepo();
 
-        await page.locator('.arch-node[data-id="main"]').hover();
-        await expect(page.locator('.hover-thumb')).toBeVisible();
-        await expect(page.locator('.hover-thumb')).toContainText('drill in');
+        try {
+            await openRepository(page, repoPath);
+
+            await currentNode(page, 'main').hover();
+            await expect(page.locator('.hover-thumb')).toBeVisible();
+            await expect(page.locator('.hover-thumb')).toContainText('drill in');
+        } finally {
+            await rm(repoPath, { recursive: true, force: true });
+        }
     });
 
     test('opens the comments drawer and selects a comment target', async () => {
-        await openRepository(page);
+        const repoPath = await createNavigationRepo();
 
-        await page.getByTitle('Comments').click();
-        await expect(page.locator('.comments-drawer')).toBeVisible();
-        await expect(page.locator('.comments-drawer')).toContainText('preload bridge is intentionally narrow');
+        try {
+            await openRepository(page, repoPath);
 
-        await page.locator('.cm-card[data-anchor="preload"]').click();
-        await expect(page.locator('.detail-panel .dp-name')).toHaveText('Preload bridge');
+            await page.getByTitle('Comments').click();
+            await expect(page.locator('.comments-drawer')).toBeVisible();
+            await expect(page.locator('.comments-drawer')).toContainText('preload bridge is intentionally narrow');
 
-        await page.getByRole('button', { name: 'close' }).click();
-        await expect(page.locator('.comments-drawer')).toHaveCount(0);
+            await page.locator('.cm-card[data-anchor="preload"]').click();
+            await expect(page.locator('.detail-panel .dp-name')).toHaveText('Preload bridge');
+
+            await page.getByRole('button', { name: 'close' }).click();
+            await expect(page.locator('.comments-drawer')).toHaveCount(0);
+        } finally {
+            await rm(repoPath, { recursive: true, force: true });
+        }
     });
 
     test('surfaces validation errors and supports validation panel actions', async () => {
@@ -217,63 +329,73 @@ edges:
     });
 
     test('supports keyboard selection, cycling, drill in, and drill out', async () => {
-        await openRepository(page);
+        const repoPath = await createNavigationRepo();
 
-        await page.keyboard.press('Tab');
-        await expect(page.locator('.detail-panel .dp-name')).toHaveText('Electron platform');
+        try {
+            await openRepository(page, repoPath);
 
-        await page.keyboard.press('ArrowRight');
-        await expect(page.locator('.detail-panel .dp-name')).toHaveText('Main process');
+            await page.keyboard.press('Tab');
+            await expect(page.locator('.detail-panel .dp-name')).toHaveText('Electron platform');
 
-        await page.keyboard.press('Enter');
-        await expect(page.locator('.arch-node[data-id="window"]')).toBeVisible();
+            await page.keyboard.press('ArrowRight');
+            await expect(page.locator('.detail-panel .dp-name')).toHaveText('Main process');
 
-        await page.keyboard.press('Escape');
-        await expect(page.locator('.arch-node[data-id="main"]')).toBeVisible();
+            await page.keyboard.press('Enter');
+            await expect(currentNode(page, 'window')).toBeVisible();
+
+            await page.keyboard.press('Escape');
+            await expect(currentNode(page, 'main')).toBeVisible();
+        } finally {
+            await rm(repoPath, { recursive: true, force: true });
+        }
     });
 
     test('persists dragged node positions and pans the canvas with right-drag', async () => {
-        await openRepository(page);
+        const repoPath = await createNavigationRepo();
 
-        const node = page.locator('.arch-node[data-id="main"]');
-        const box = await node.boundingBox();
-        expect(box).not.toBeNull();
+        try {
+            await openRepository(page, repoPath);
 
-        await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-        await page.mouse.down();
-        await page.mouse.move(box!.x + box!.width / 2 + 80, box!.y + box!.height / 2 + 40, { steps: 5 });
-        await page.mouse.up();
+            const node = currentNode(page, 'main');
+            const box = await node.boundingBox();
+            expect(box).not.toBeNull();
 
-        await expect
-            .poll(() =>
-                page.evaluate(() => localStorage.getItem('archviewer.nodePos') ?? ''),
-            )
-            .toContain('arch-viewer::main');
+            await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+            await page.mouse.down();
+            await page.mouse.move(box!.x + box!.width / 2 + 80, box!.y + box!.height / 2 + 40, { steps: 5 });
+            await page.mouse.up();
 
-        const stage = page.locator('.stage.layer-current');
-        const before = await stage.evaluate((element) =>
-            (globalThis as unknown as { getComputedStyle: (element: unknown) => { transform: string } })
-                .getComputedStyle(element).transform,
-        );
-        const host = await page.locator('.canvas-host').boundingBox();
-        expect(host).not.toBeNull();
+            await expect
+                .poll(() => page.evaluate(() => localStorage.getItem('archviewer.nodePos') ?? ''))
+                .toContain('arch-viewer::main');
 
-        await page.mouse.move(host!.x + host!.width / 2, host!.y + host!.height / 2);
-        await page.mouse.down({ button: 'right' });
-        await page.mouse.move(host!.x + host!.width / 2 + 90, host!.y + host!.height / 2 + 60, { steps: 5 });
-        await page.mouse.up({ button: 'right' });
+            const stage = page.locator('.stage.layer-current');
+            const before = await stage.evaluate((element) =>
+                (globalThis as unknown as { getComputedStyle: (element: unknown) => { transform: string } })
+                    .getComputedStyle(element).transform,
+            );
+            const host = await page.locator('.canvas-host').boundingBox();
+            expect(host).not.toBeNull();
 
-        await expect
-            .poll(() =>
-                stage.evaluate((element) =>
-                    (
-                        globalThis as unknown as {
-                            getComputedStyle: (element: unknown) => { transform: string };
-                        }
-                    ).getComputedStyle(element).transform,
-                ),
-            )
-            .not.toBe(before);
+            await page.mouse.move(host!.x + host!.width / 2, host!.y + host!.height / 2);
+            await page.mouse.down({ button: 'right' });
+            await page.mouse.move(host!.x + host!.width / 2 + 90, host!.y + host!.height / 2 + 60, { steps: 5 });
+            await page.mouse.up({ button: 'right' });
+
+            await expect
+                .poll(() =>
+                    stage.evaluate((element) =>
+                        (
+                            globalThis as unknown as {
+                                getComputedStyle: (element: unknown) => { transform: string };
+                            }
+                        ).getComputedStyle(element).transform,
+                    ),
+                )
+                .not.toBe(before);
+        } finally {
+            await rm(repoPath, { recursive: true, force: true });
+        }
     });
 });
 
